@@ -1,0 +1,17 @@
+﻿[Unit]
+Description=DEGOFOOD Backend API
+After=network.target
+
+[Service]
+Type=exec
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/DEGOFOOD/backend
+Environment=PATH=/opt/DEGOFOOD/backend/venv/bin
+EnvironmentFile=/opt/DEGOFOOD/backend/.env
+ExecStart=/opt/DEGOFOOD/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

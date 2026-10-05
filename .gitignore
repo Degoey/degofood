@@ -1,0 +1,56 @@
+# ============================================================
+# .gitignore untuk proyek DEGOFOOD
+# ============================================================
+
+# --- Python virtual environment (JANGAN di-commit, besar & platform-specific) ---
+venv/
+.venv/
+env/
+ENV/
+
+# --- Python cache / build ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+*.spec
+
+# --- Environment & secrets (JANGAN pernah di-commit) ---
+.env
+.env.*
+!.env.example
+
+# --- Database SQLite (data lokal, bukan source) ---
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Log file ---
+*.log
+*.err
+*.out
+
+# --- Flutter / Flet build artifacts ---
+mobile_app/build/
+mobile_app/dist/
+mobile_app/.dart_tool/
+mobile_app/.flutter-plugins
+mobile_app/.flutter-plugins-dependencies
+mobile_app/.packages
+mobile_app/android/.gradle/
+mobile_app/android/local.properties
+mobile_app/android/key.properties
+*.apk
+*.aab
+*.ipa
+
+# --- OS / Editor ---
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp

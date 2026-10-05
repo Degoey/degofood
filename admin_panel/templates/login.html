@@ -1,0 +1,35 @@
+﻿{% extends "base.html" %}
+
+{% block title %}Login - DEGOFOOD Admin{% endblock %}
+
+{% block content %}
+<div class="min-h-[70vh] flex items-center justify-center">
+    <div class="bg-white rounded-xl shadow-md w-full max-w-md p-8">
+        <h1 class="text-2xl font-bold text-gray-800 mb-6 text-center">🍔 DEGOFOOD Admin</h1>
+
+        {% if error %}
+        <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-lg mb-6">
+            Username atau password salah.
+        </div>
+        {% endif %}
+
+        <form method="POST" action="/login" class="space-y-4">
+            <div>
+                <label for="username" class="block text-sm font-semibold text-gray-700 mb-1">Username</label>
+                <input type="text" id="username" name="username" required autofocus
+                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                    value="admin">
+            </div>
+            <div>
+                <label for="password" class="block text-sm font-semibold text-gray-700 mb-1">Password</label>
+                <input type="password" id="password" name="password" required
+                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400">
+            </div>
+            <button type="submit"
+                class="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold px-4 py-2 rounded-lg text-sm">
+                Masuk
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

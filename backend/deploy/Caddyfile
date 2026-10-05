@@ -1,0 +1,8 @@
+﻿# Ganti domain sesuai milikmu sebelum deploy
+api.DEGOFOOD.example.com {
+    reverse_proxy 127.0.0.1:8000
+}
+
+admin.DEGOFOOD.example.com {
+    reverse_proxy 127.0.0.1:8001
+}

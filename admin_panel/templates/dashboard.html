@@ -1,0 +1,31 @@
+﻿{% extends "base.html" %}
+
+{% block title %}Dashboard - DEGOFOOD Admin{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-gray-800 mb-6">Dashboard</h1>
+
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+
+    <div class="bg-white rounded-xl shadow-md p-6 border-l-4 border-blue-500">
+        <p class="text-sm font-semibold text-gray-500 uppercase tracking-wide">Total Pesanan</p>
+        <p class="text-4xl font-bold text-blue-600 mt-2">{{ total_orders }}</p>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-md p-6 border-l-4 border-green-500">
+        <p class="text-sm font-semibold text-gray-500 uppercase tracking-wide">Total Restoran</p>
+        <p class="text-4xl font-bold text-green-600 mt-2">{{ total_restaurants }}</p>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-md p-6 border-l-4 border-purple-500">
+        <p class="text-sm font-semibold text-gray-500 uppercase tracking-wide">Total Pelanggan</p>
+        <p class="text-4xl font-bold text-purple-600 mt-2">{{ total_customers }}</p>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-md p-6 border-l-4 border-orange-500">
+        <p class="text-sm font-semibold text-gray-500 uppercase tracking-wide">Pesanan Pending</p>
+        <p class="text-4xl font-bold text-orange-600 mt-2">{{ pending_orders }}</p>
+    </div>
+
+</div>
+{% endblock %}
