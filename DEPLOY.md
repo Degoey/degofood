@@ -14,7 +14,8 @@ Tersedia script yang mengotomatiskan seluruh langkah (install paket, salin kode,
 
 Dari Windows (PowerShell, di root repo):
 ```powershell
-.\backend\deploy\deploy_from_windows.ps1 -Server "root@IP_VPS"
+# <PORT_SSH> = port SSH VPS (default 22; banyak VPS memakai port kustom, mis. 20316)
+.\backend\deploy\deploy_from_windows.ps1 -Server "root@IP_VPS" -Port <PORT_SSH>
 ```
 
 Atau langsung di VPS:
@@ -30,7 +31,7 @@ Hasilnya:
 ### B. Sudah punya domain
 
 ```powershell
-.\backend\deploy\deploy_from_windows.ps1 -Server "root@IP_VPS" -HostName "domainku.com" -Email "admin@domainku.com"
+.\backend\deploy\deploy_from_windows.ps1 -Server "root@IP_VPS" -Port <PORT_SSH> -HostName "domainku.com" -Email "admin@domainku.com"
 ```
 ```bash
 sudo bash backend/deploy/deploy.sh domainku.com admin@domainku.com
@@ -38,6 +39,12 @@ sudo bash backend/deploy/deploy.sh domainku.com admin@domainku.com
 Pastikan A record `api.domainku.com` dan `admin.domainku.com` sudah mengarah ke IP VPS.
 
 > Script ini **idempotent**: aman dijalankan ulang untuk update. Saat pertama dijalankan, script membuat secret acak dan **menampilkan password admin panel** — simpan password itu. File `.env` dan database **tidak** ditimpa pada re-run.
+
+### Troubleshooting koneksi SSH
+
+- **`Permission denied (publickey)` saat `ssh user@IP`** → hampir selalu **port SSH salah**. Coba `ssh -p <PORT> user@IP`. Banyak VPS memakai port kustom (mis. `20316`), bukan 22. Selalu sertakan `-Port <PORT>` pada `deploy_from_windows.ps1` (dan `-P <PORT>` pada `scp`).
+- **`scp: subsystem request failed` / `Connection closed`** → server tidak menyediakan SFTP; script otomatis beralih ke protokol SCP lama (`scp -O`).
+- **Diminta password berkali-kali** → normal (tiap `ssh`/`scp` meminta sekali). Pasang kunci SSH agar tidak diminta lagi: `ssh-copy-id -p <PORT> user@IP` (Windows: `type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh -p <PORT> user@IP "cat >> ~/.ssh/authorized_keys"`).
 
 Langkah manual di bawah tetap disediakan bila kamu ingin mengontrol tiap tahap.
 
@@ -76,8 +83,9 @@ sudo apt install -y caddy
 Dari mesin Windows (PowerShell di folder repo):
 
 ```powershell
-scp -r <REPO>/backend user@<IP_VPS>:/tmp/DEGOFOOD_backend
-scp -r <REPO>/admin_panel user@<IP_VPS>:/tmp/DEGOFOOD_admin
+# -P = port SSH (HURUF BESAR; berbeda dari -p milik ssh)
+scp -r -P <PORT_SSH> <REPO>/backend user@<IP_VPS>:/tmp/DEGOFOOD_backend
+scp -r -P <PORT_SSH> <REPO>/admin_panel user@<IP_VPS>:/tmp/DEGOFOOD_admin
 ```
 
 Kemudian di VPS:
@@ -301,7 +309,7 @@ sudo cp /opt/DEGOFOOD/backend/food_delivery.db /backup/food_delivery-$(date +%F)
 
 ```bash
 sudo ufw default deny incoming
-sudo ufw allow 22
+sudo ufw allow <PORT_SSH>   # port SSH VPS (mis. 20316) — JANGAN salah, atau kamu bisa terkunci!
 sudo ufw allow 80
 sudo ufw allow 443
 sudo ufw enable
