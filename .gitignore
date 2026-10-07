@@ -57,3 +57,7 @@ desktop.ini
 
 # Arsip/backup script deploy
 *.bak
+
+# --- Folder kerja agen (berisi worktree = salinan penuh repo) - JANGAN di-commit ---
+.kilo/
+.kilocode/
