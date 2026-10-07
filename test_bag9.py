@@ -1,13 +1,27 @@
 import json
+import os
 import sys
 import httpx
 
 BASE_BACKEND = 'http://127.0.0.1:8000'
 BASE_ADMIN = 'http://127.0.0.1:8001'
 
+ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'admin')
+ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', 'admin123')
+
 
 def main():
     client = httpx.Client(follow_redirects=True)
+
+    # 0. Login ke admin panel (halaman admin dilindungi sesi login)
+    resp = client.post(
+        f'{BASE_ADMIN}/login',
+        data={'username': ADMIN_USERNAME, 'password': ADMIN_PASSWORD},
+    )
+    print('POST /login status:', resp.status_code)
+    if 'name="password"' in resp.text or 'Masuk' in resp.text:
+        print('Gagal login ke admin panel, periksa ADMIN_USERNAME/ADMIN_PASSWORD')
+        sys.exit(1)
 
     # 1. Tambah restoran via admin panel
     resp = client.post(

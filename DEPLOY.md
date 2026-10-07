@@ -4,6 +4,46 @@ Panduan ini menggunakan **VPS Ubuntu 22.04/24.04**, **Python venv**, dan **Caddy
 
 ---
 
+## Cara Cepat (Otomatis)
+
+Tersedia script yang mengotomatiskan seluruh langkah (install paket, salin kode, venv, `.env` + secret acak, seed, systemd, Caddy).
+
+**Belum punya domain?** Script otomatis memakai **sslip.io** sehingga HTTPS tetap aktif tanpa beli domain.
+
+### A. Tanpa domain (pakai IP VPS + sslip.io)
+
+Dari Windows (PowerShell, di root repo):
+```powershell
+.\backend\deploy\deploy_from_windows.ps1 -Server "root@IP_VPS"
+```
+
+Atau langsung di VPS:
+```bash
+sudo bash backend/deploy/deploy.sh          # auto-deteksi IP publik
+# atau: sudo bash backend/deploy/deploy.sh 123.45.67.89
+```
+
+Hasilnya:
+- Backend API : `https://api.<IP_VPS>.sslip.io`
+- Admin Panel : `https://admin.<IP_VPS>.sslip.io`
+
+### B. Sudah punya domain
+
+```powershell
+.\backend\deploy\deploy_from_windows.ps1 -Server "root@IP_VPS" -HostName "domainku.com" -Email "admin@domainku.com"
+```
+```bash
+sudo bash backend/deploy/deploy.sh domainku.com admin@domainku.com
+```
+Pastikan A record `api.domainku.com` dan `admin.domainku.com` sudah mengarah ke IP VPS.
+
+> Script ini **idempotent**: aman dijalankan ulang untuk update. Saat pertama dijalankan, script membuat secret acak dan **menampilkan password admin panel** — simpan password itu. File `.env` dan database **tidak** ditimpa pada re-run.
+
+Langkah manual di bawah tetap disediakan bila kamu ingin mengontrol tiap tahap.
+
+---
+
+
 ## 1. Persiapan VPS
 
 ### 1.1 Buat DNS Record
@@ -16,6 +56,8 @@ Arahkan dua subdomain ke IP VPS-mu:
 | `admin.DEGOFOOD.example.com` | IP VPS | Admin panel web |
 
 > Ganti `DEGOFOOD.example.com` dengan domain milikmu.
+>
+> **Belum punya domain?** Pakai **sslip.io**: `api.<IP_VPS>.sslip.io` dan `admin.<IP_VPS>.sslip.io` — tanpa beli domain, HTTPS tetap otomatis. Cara termudah: jalankan `deploy.sh` tanpa argumen (lihat bagian *Cara Cepat*).
 
 ### 1.2 Login ke VPS dan Install Dependency
 
@@ -34,8 +76,8 @@ sudo apt install -y caddy
 Dari mesin Windows (PowerShell di folder repo):
 
 ```powershell
-scp -r D:/DEGOFOOD/backend user@<IP_VPS>:/tmp/DEGOFOOD_backend
-scp -r D:/DEGOFOOD/admin_panel user@<IP_VPS>:/tmp/DEGOFOOD_admin
+scp -r <REPO>/backend user@<IP_VPS>:/tmp/DEGOFOOD_backend
+scp -r <REPO>/admin_panel user@<IP_VPS>:/tmp/DEGOFOOD_admin
 ```
 
 Kemudian di VPS:
@@ -90,8 +132,60 @@ Verifikasi:
 curl http://127.0.0.1:8000/api/health
 ```
 
+### 2.4 Isi Data Awal (Seed)
+
+```bash
+cd /opt/DEGOFOOD/backend
+sudo -u www-data venv/bin/python seed.py
+```
+
+Perintah ini mengisi 2 restoran contoh, 8 menu, dan 1 pelanggan. Aman dijalankan berulang (hanya mengisi bila tabel masih kosong).
+
+> **Catatan `.env`:** aplikasi membaca konfigurasi dari *environment*, bukan otomatis dari file `.env`. Saat dijalankan lewat systemd, `.env` dimuat karena `EnvironmentFile=` di unit service. Jika kamu menjalankan `uvicorn` manual tanpa systemd, ekspor dulu variabelnya, mis. `set -a; . ./.env; set +a`.
+
 ---
 
+
+## 3. Deploy Admin Panel
+
+### 3.1 Setup Virtual Environment
+
+```bash
+cd /opt/DEGOFOOD/admin_panel
+sudo -u www-data python3 -m venv venv
+sudo -u www-data venv/bin/pip install -U pip
+sudo -u www-data venv/bin/pip install -r requirements.txt
+```
+
+### 3.2 Buat File Environment
+
+```bash
+sudo -u www-data cp .env.example .env
+sudo -u www-data nano .env
+```
+
+Contoh minimal:
+
+```env
+BACKEND_URL=http://127.0.0.1:8000
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=password-kuat
+ADMIN_API_KEY=super-secret-admin-key
+SESSION_SECRET=random-secret-untuk-session
+```
+
+> `ADMIN_API_KEY` **harus sama persis** dengan yang ada di `backend/.env`, jika tidak admin panel gagal memuat data admin.
+
+### 3.3 Install Systemd Service
+
+```bash
+sudo cp /opt/DEGOFOOD/backend/deploy/DEGOFOOD-admin.service /etc/systemd/system/DEGOFOOD-admin.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now DEGOFOOD-admin
+sudo systemctl status DEGOFOOD-admin
+```
+
+---
 
 ## 4. Reverse Proxy + HTTPS
 
@@ -154,13 +248,16 @@ API_BASE_URL = 'https://api.DEGOFOOD.example.com'
 
 ### 6.2 Build APK
 
-Di PowerShell di folder `D:\DEGOFOOD\mobile_app`:
+Di PowerShell di folder `<REPO>\mobile_app`:
 
 ```powershell
 .\build_apk.ps1 -ApiUrl "https://api.DEGOFOOD.example.com"
+
+# Tanpa domain (pakai sslip.io) — ganti <IP_VPS> dengan IP VPS-mu:
+# .\build_apk.ps1 -ApiUrl "https://api.<IP_VPS>.sslip.io"
 ```
 
-Hasil APK akan ada di `D:\DEGOFOOD\mobile_app\dist\`.
+Hasil APK akan ada di `mobile_app\build\outputs\` (mis. `FoodGo-arm64-v8a-release.apk`) dan/atau `mobile_app\build\flutter\build\app\outputs\flutter-apk\app-release.apk`.
 
 ### 6.3 Catatan Penting untuk Mobile
 
@@ -210,39 +307,3 @@ sudo ufw allow 443
 sudo ufw enable
 ```
 
-## 3. Deploy Admin Panel
-
-### 3.1 Setup Virtual Environment
-
-```bash
-cd /opt/DEGOFOOD/admin_panel
-sudo -u www-data python3 -m venv venv
-sudo -u www-data venv/bin/pip install -U pip
-sudo -u www-data venv/bin/pip install -r requirements.txt
-```
-
-### 3.2 Buat File Environment
-
-```bash
-sudo -u www-data cp .env.example .env
-sudo -u www-data nano .env
-```
-
-Contoh minimal:
-
-```env
-BACKEND_URL=http://127.0.0.1:8000
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD=password-kuat
-ADMIN_API_KEY=super-secret-admin-key
-SESSION_SECRET=random-secret-untuk-session
-```
-
-### 3.3 Install Systemd Service
-
-```bash
-sudo cp /opt/DEGOFOOD/backend/deploy/DEGOFOOD-admin.service /etc/systemd/system/DEGOFOOD-admin.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now DEGOFOOD-admin
-sudo systemctl status DEGOFOOD-admin
-```

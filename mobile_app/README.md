@@ -43,7 +43,7 @@ Aplikasi mobile DEGOFOOD dibangun dengan [Flet](https://flet.dev/) (Python + Flu
 2. Jalankan script build:
 
    ```powershell
-   cd d:\DEGOFOOD\mobile_app
+   cd <REPO>\mobile_app
    .\build_apk.ps1 -ApiUrl "http://<IP_LAN>:8000"
    ```
 
@@ -52,7 +52,7 @@ Aplikasi mobile DEGOFOOD dibangun dengan [Flet](https://flet.dev/) (Python + Flu
 3. Setelah build selesai, APK hasil build berada di:
 
    ```
-   d:\DEGOFOOD\mobile_app\build\flutter\build\app\outputs\flutter-apk\app-release.apk
+   <REPO>\mobile_app\build\flutter\build\app\outputs\flutter-apk\app-release.apk
    ```
 
    Atau sesuai output dari Flet.

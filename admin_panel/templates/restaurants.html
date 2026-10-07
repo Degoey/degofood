@@ -43,6 +43,12 @@
                 <th class="px-4 py-3 text-left font-semibold">Nama</th>
                 <th class="px-4 py-3 text-left font-semibold">Alamat</th>
                 <th class="px-4 py-3 text-left font-semibold">Telepon</th>
+                <th class="px-4 py-3 text-left font-semibold">Menu</th>
+                <th class="px-4 py-3 text-left font-semibold">Status</th>
+                <th class="px-4 py-3 text-left font-semibold">Aksi</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
             {% for restaurant in restaurants %}
             <tr class="hover:bg-gray-50">
                 <td class="px-4 py-3 font-semibold text-gray-800">#{{ restaurant.id }}</td>
@@ -149,11 +155,3 @@ document.getElementById('menu-modal').addEventListener('click', function(e) {
 });
 </script>
 {% endblock %}
-
-
-                <th class="px-4 py-3 text-left font-semibold">Menu</th>
-                <th class="px-4 py-3 text-left font-semibold">Status</th>
-                <th class="px-4 py-3 text-left font-semibold">Aksi</th>
-            </tr>
-        </thead>
-        <tbody class="divide-y divide-gray-100">

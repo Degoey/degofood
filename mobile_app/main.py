@@ -13,8 +13,8 @@ from datetime import datetime
 # - Desktop dev: http://127.0.0.1:8000
 # - APK di jaringan lokal: http://<IP_LAN>:8000
 # - Produksi: domain server backend yang sudah dideploy
-# Ganti ke domain VPS-mu, contoh: https://api.DEGOFOOD.example.com
-API_BASE_URL = 'https://api.DEGOFOOD.example.com'
+#   (script build_apk.ps1 -ApiUrl "..." akan menimpa nilai ini saat build)
+API_BASE_URL = 'https://api.45.66.153.146.sslip.io'
 
 PRIMARY = ft.Colors.ORANGE_600
 ACCENT = ft.Colors.ORANGE_700

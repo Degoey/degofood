@@ -1,2 +1,2 @@
 flet==0.25.2
-httpx
+httpx==0.28.1
