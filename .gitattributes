@@ -1,0 +1,15 @@
+# Normalisasi line ending per jenis file.
+#
+# PENTING: file shell (.sh) WAJIB memakai LF. Jika git di Windows
+# (core.autocrlf=true) mengubahnya menjadi CRLF, script akan gagal
+# dijalankan di VPS Linux dengan error:
+#   bash: $'\r': command not found
+*.sh text eol=lf
+
+# Script PowerShell & batch memakai CRLF (standar Windows).
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+
+# Sumber Python dan dokumentasi memakai LF.
+*.py text eol=lf
+*.md text eol=lf
