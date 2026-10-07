@@ -54,3 +54,6 @@ desktop.ini
 .vscode/
 .idea/
 *.swp
+
+# Arsip/backup script deploy
+*.bak
