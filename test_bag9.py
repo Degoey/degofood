@@ -3,8 +3,8 @@ import os
 import sys
 import httpx
 
-BASE_BACKEND = 'http://127.0.0.1:8000'
-BASE_ADMIN = 'http://127.0.0.1:8001'
+BASE_BACKEND = os.getenv('BASE_BACKEND', 'http://127.0.0.1:8000')
+BASE_ADMIN = os.getenv('BASE_ADMIN', 'http://127.0.0.1:8001')
 
 ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'admin')
 ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', 'admin123')

@@ -113,6 +113,14 @@ cd backend
 - Dokumentasi interaktif: http://127.0.0.1:8000/docs
 - Health check: http://127.0.0.1:8000/api/health
 
+**Port 8000 sudah dipakai program lain?** (mis. Docker Desktop yang mem-publish container ke 8000)
+Jalankan backend di port lain tanpa perlu mengubah script:
+
+```powershell
+$env:DEGOFOOD_PORT = '8020'
+.\run_server.ps1
+```
+
 > Tabel database dibuat otomatis saat pertama kali dijalankan (`Base.metadata.create_all`).
 
 ### 2. Admin Panel (port 8001)
@@ -125,6 +133,14 @@ python -m venv venv
 ```
 
 Buka http://127.0.0.1:8001 dan login dengan `admin` / `admin123` (default).
+
+Bila backend dijalankan di port lain, arahkan admin panel ke sana (dan opsional ubah port admin):
+
+```powershell
+$env:BACKEND_URL = 'http://127.0.0.1:8020'
+$env:DEGOFOOD_ADMIN_PORT = '8001'
+.\run_admin.ps1
+```
 
 ### 3. Mobile App (desktop dev)
 
@@ -248,6 +264,15 @@ Dengan backend (8000) dan admin panel (8001) sudah berjalan, jalankan dari **roo
 > Skrip ini butuh `httpx`, yang sudah termasuk dalam `backend/requirements.txt` —
 > karena itu dipakai interpreter venv backend.
 
+Bila backend / admin panel berjalan di port non-default, set variabel berikut
+(default: `http://127.0.0.1:8000` dan `http://127.0.0.1:8001`):
+
+```powershell
+$env:BASE_BACKEND = 'http://127.0.0.1:8020'
+$env:BASE_ADMIN   = 'http://127.0.0.1:8001'
+.\backend\venv\Scripts\python.exe test_bag9.py
+```
+
 Skrip ini membuat restoran, menambah menu, mendaftarkan pelanggan, dan membuat pesanan lewat API untuk memverifikasi alur lengkap. Setel `ADMIN_USERNAME` / `ADMIN_PASSWORD` bila berbeda dari default.
 
 Hasil yang diharapkan: semua langkah `status: 200`, diakhiri `Update status status: 200`.
@@ -306,10 +331,41 @@ foreach ($f in @("$venv\pyvenv.cfg", "$venv\Scripts\activate.bat", "$venv\Script
 
 ### Port 8000 / 8001 sudah dipakai
 
+Cek dulu siapa pemakainya:
+
 ```powershell
-netstat -ano | findstr :8000
+netstat -ano | Select-String ':8000\s'
+Get-Process -Id <PID> | Select-Object Id, ProcessName, Path
+```
+
+Hentikan **hanya bila itu prosesmu sendiri**:
+
+```powershell
 taskkill /PID <PID> /F
 ```
+
+**Jangan hentikan proses milik aplikasi lain.** Contoh nyata: **Docker Desktop**
+(`com.docker.backend.exe`) yang mem-publish container ke port 8000 menempati port itu secara
+permanen. Akibatnya request ke `http://127.0.0.1:8000` dilayani aplikasi container tersebut,
+bukan DEGOFOOD — gejalanya `/api/health` membalas `{"detail":"Not Found"}`.
+
+Solusinya: jalankan DEGOFOOD di port lain, lalu arahkan admin panel ke port itu.
+
+```powershell
+# terminal 1
+cd backend
+$env:DEGOFOOD_PORT = '8020'
+.\run_server.ps1
+
+# terminal 2
+cd admin_panel
+$env:BACKEND_URL = 'http://127.0.0.1:8020'
+.\run_admin.ps1
+```
+
+> Catatan: `uvicorn --reload` menjalankan proses induk **dan** proses anak (worker). Bila port
+> masih terpakai setelah `taskkill` pada PID di `netstat`, worker-nya masih hidup — temukan dengan
+> `Get-CimInstance Win32_Process -Filter "Name='python.exe'"` lalu hentikan PID tersebut.
 
 ### Health check backend
 
