@@ -98,7 +98,7 @@ Jalankan **backend lebih dulu**, baru admin panel / mobile app.
 ```powershell
 cd backend
 python -m venv venv
-.\venv\Scripts\pip install -r requirements.txt
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
 .\run_server.ps1
 ```
 
@@ -106,7 +106,7 @@ Atau manual:
 
 ```powershell
 cd backend
-.\venv\Scripts\uvicorn.exe app.main:app --host 0.0.0.0 --port 8000 --reload
+.\venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 - API: http://127.0.0.1:8000
@@ -120,7 +120,7 @@ cd backend
 ```powershell
 cd admin_panel
 python -m venv venv
-.\venv\Scripts\pip install -r requirements.txt
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
 .\run_admin.ps1
 ```
 
@@ -131,9 +131,14 @@ Buka http://127.0.0.1:8001 dan login dengan `admin` / `admin123` (default).
 ```powershell
 cd mobile_app
 python -m venv venv
-.\venv\Scripts\pip install -r requirements.txt
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
 .\venv\Scripts\python.exe main.py
 ```
+
+> **Catatan penting:** selalu panggil `python.exe -m pip` dan `python.exe -m uvicorn`,
+> jangan `pip.exe` / `uvicorn.exe`. Launcher `.exe` di dalam `venv\Scripts` menyimpan
+> **path absolut** saat dibuat, sehingga rusak bila folder repo di-rename atau dipindah.
+> Lihat bagian **Troubleshooting** di bawah.
 
 ---
 
@@ -207,7 +212,6 @@ Salin `.env.example` menjadi `.env` di masing-masing folder. **Jangan pernah com
 
 ---
 
-
 ## Deploy ke VPS
 
 Panduan lengkap (Ubuntu + systemd + Caddy + HTTPS otomatis) ada di **[DEPLOY.md](DEPLOY.md)**.
@@ -235,13 +239,83 @@ Sesuaikan `JAVA_HOME`, `ANDROID_SDK_ROOT`, dan lokasi Flutter di bagian atas `bu
 
 ## Uji End-to-End
 
-Dengan backend (8000) dan admin panel (8001) sudah berjalan:
+Dengan backend (8000) dan admin panel (8001) sudah berjalan, jalankan dari **root repo**:
 
 ```powershell
-python test_bag9.py
+.\backend\venv\Scripts\python.exe test_bag9.py
 ```
 
+> Skrip ini butuh `httpx`, yang sudah termasuk dalam `backend/requirements.txt` —
+> karena itu dipakai interpreter venv backend.
+
 Skrip ini membuat restoran, menambah menu, mendaftarkan pelanggan, dan membuat pesanan lewat API untuk memverifikasi alur lengkap. Setel `ADMIN_USERNAME` / `ADMIN_PASSWORD` bila berbeda dari default.
+
+Hasil yang diharapkan: semua langkah `status: 200`, diakhiri `Update status status: 200`.
+
+---
+
+## Troubleshooting
+
+### `uvicorn.exe` / `pip.exe` rusak setelah folder di-rename
+
+**Gejala:** `.\venv\Scripts\uvicorn.exe --version` gagal tanpa pesan jelas, atau service
+tidak mau start padahal paket sudah ter-install.
+
+**Penyebab:** saat `pip` meng-install paket, ia membuat launcher `.exe` di `venv\Scripts\`
+yang menyimpan **path absolut** interpreter, contoh:
+
+```
+#!D:\FOODGO\admin_panel\venv\Scripts\python.exe
+```
+
+Bila folder repo di-rename (mis. `D:\FOODGO` → `D:\DEGOFOOD`), path itu menjadi tidak
+valid dan launcher gagal — **walaupun isi `site-packages` masih utuh**.
+
+**Solusi cepat (tanpa install ulang apa pun):** panggil modulnya lewat interpreter,
+bukan lewat launcher `.exe`:
+
+```powershell
+cd backend
+.\venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Cara ini sudah dipakai otomatis oleh `run_server.ps1` dan `run_admin.ps1`, sehingga
+kedua script itu tetap berfungsi setelah folder dipindah.
+
+**Solusi bersih (opsional):** buat ulang venv-nya.
+
+```powershell
+cd backend
+Remove-Item -Recurse -Force venv
+python -m venv venv
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+**Menyembuhkan path lama di dalam venv** (`pyvenv.cfg`, `activate.bat`, `activate.ps1`)
+agar `VIRTUAL_ENV` menunjuk ke lokasi baru:
+
+```powershell
+$venv = 'D:\DEGOFOOD\backend\venv'
+foreach ($f in @("$venv\pyvenv.cfg", "$venv\Scripts\activate.bat", "$venv\Scripts\activate.ps1")) {
+    if (Test-Path $f) {
+        (Get-Content $f -Raw).Replace('D:\FOODGO', 'D:\DEGOFOOD') |
+            Set-Content $f -NoNewline -Encoding ASCII
+    }
+}
+```
+
+### Port 8000 / 8001 sudah dipakai
+
+```powershell
+netstat -ano | findstr :8000
+taskkill /PID <PID> /F
+```
+
+### Health check backend
+
+```powershell
+curl http://127.0.0.1:8000/api/health
+```
 
 ---
 
