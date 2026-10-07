@@ -265,7 +265,7 @@ Di PowerShell di folder `<REPO>\mobile_app`:
 # .\build_apk.ps1 -ApiUrl "https://api.<IP_VPS>.sslip.io"
 ```
 
-Hasil APK akan ada di `mobile_app\build\outputs\` (mis. `FoodGo-arm64-v8a-release.apk`) dan/atau `mobile_app\build\flutter\build\app\outputs\flutter-apk\app-release.apk`.
+Hasil APK akan ada di `mobile_app\build\outputs\` (mis. `DEGOFOOD-arm64-v8a-release.apk`) dan/atau `mobile_app\build\flutter\build\app\outputs\flutter-apk\app-release.apk`.
 
 ### 6.3 Catatan Penting untuk Mobile
 

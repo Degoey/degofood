@@ -44,7 +44,7 @@ function Invoke-Native {
 
 # Repo root = dua level di atas folder script ini (backend/deploy -> root)
 $repoRoot  = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$remoteDir = "/tmp/foodgo"
+$remoteDir = "/tmp/degofood"
 
 # Opsi SSH umum: terima host key baru otomatis (hindari prompt "yes/no") + timeout wajar
 $sshOpts = @("-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=15")
@@ -72,7 +72,7 @@ if (-not $SkipPreflight) {
 
 # --- Kemas kode (tanpa venv/__pycache__/.env/db) ---
 Write-Host "`n==> Mengemas kode (tanpa venv/__pycache__/.env/db) ..."
-$tarFile = Join-Path $env:TEMP "foodgo-deploy.tar.gz"
+$tarFile = Join-Path $env:TEMP "degofood-deploy.tar.gz"
 if (Test-Path $tarFile) { Remove-Item $tarFile -Force }
 Invoke-Native "tar" @("-czf", $tarFile, "--exclude=venv", "--exclude=__pycache__", "--exclude=.env", "--exclude=*.db", "-C", $repoRoot, "backend", "admin_panel")
 

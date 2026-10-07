@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# deploy_foodgo_safe.sh - Deploy FOODGO ke VPS BERSAMA (NAT, banyak app lain).
+# deploy_degofood_safe.sh - Deploy DEGOFOOD ke VPS BERSAMA (NAT, banyak app lain).
 #
 # Kenapa script terpisah dari deploy.sh repo:
 #   - repo deploy.sh memakai port 8000/8001 + Caddy + Let's Encrypt.
@@ -13,7 +13,7 @@ set -euo pipefail
 
 API_PORT="${API_PORT:-8020}"
 ADMIN_PORT="${ADMIN_PORT:-8021}"
-APP_DIR="${APP_DIR:-/opt/FOODGO}"
+APP_DIR="${APP_DIR:-/opt/DEGOFOOD}"
 RUN_USER="www-data"
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
@@ -28,11 +28,11 @@ echo "==> API port   : ${API_PORT}"
 echo "==> Admin port : ${ADMIN_PORT}"
 
 # 0. Pastikan port tujuan benar-benar bebas (jangan ganggu app lain).
-#    Service FOODGO milik kita sendiri dihentikan dulu supaya re-run tetap aman.
+#    Service DEGOFOOD milik kita sendiri dihentikan dulu supaya re-run tetap aman.
 if command -v systemctl >/dev/null 2>&1; then
-    if [[ -f /etc/systemd/system/foodgo-backend.service || -f /etc/systemd/system/foodgo-admin.service ]]; then
-        echo "==> Menghentikan service FOODGO yang lama (untuk update) ..."
-        systemctl stop foodgo-backend foodgo-admin 2>/dev/null || true
+    if [[ -f /etc/systemd/system/degofood-backend.service || -f /etc/systemd/system/degofood-admin.service ]]; then
+        echo "==> Menghentikan service DEGOFOOD yang lama (untuk update) ..."
+        systemctl stop degofood-backend degofood-admin 2>/dev/null || true
         sleep 2
     fi
 fi
@@ -107,10 +107,10 @@ fi
 chmod 600 "${APP_DIR}/backend/.env" "${APP_DIR}/admin_panel/.env"
 chown -R "${RUN_USER}:${RUN_USER}" "${APP_DIR}"
 
-echo "==> [5/6] systemd service (foodgo-backend, foodgo-admin) ..."
-cat > /etc/systemd/system/foodgo-backend.service <<EOF
+echo "==> [5/6] systemd service (degofood-backend, degofood-admin) ..."
+cat > /etc/systemd/system/degofood-backend.service <<EOF
 [Unit]
-Description=FOODGO Backend API
+Description=DEGOFOOD Backend API
 After=network.target
 
 [Service]
@@ -128,9 +128,9 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-cat > /etc/systemd/system/foodgo-admin.service <<EOF
+cat > /etc/systemd/system/degofood-admin.service <<EOF
 [Unit]
-Description=FOODGO Admin Panel
+Description=DEGOFOOD Admin Panel
 After=network.target
 
 [Service]
@@ -149,8 +149,8 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable --now foodgo-backend foodgo-admin >/dev/null 2>&1 || true
-systemctl restart foodgo-backend foodgo-admin
+systemctl enable --now degofood-backend degofood-admin >/dev/null 2>&1 || true
+systemctl restart degofood-backend degofood-admin
 sleep 4
 
 echo "==> [6/6] Seed data + verifikasi ..."
@@ -170,7 +170,7 @@ echo "Backend lokal : ${BE_LOCAL}"
 echo "Admin  lokal  : HTTP ${AD_LOCAL}"
 echo "API  publik   : http://${IP}:${API_PORT}"
 echo "Admin publik  : http://${IP}:${ADMIN_PORT}"
-echo "Service       : $(systemctl is-active foodgo-backend) / $(systemctl is-active foodgo-admin)"
+echo "Service       : $(systemctl is-active degofood-backend) / $(systemctl is-active degofood-admin)"
 if [[ "${NEW_SECRETS}" == "1" ]]; then
     echo
     echo "KREDENSIAL BARU (simpan sekarang, hanya tampil di sini):"
@@ -185,5 +185,5 @@ echo "==============================================="
 if [[ "${BE_LOCAL}" != *"ok"* ]]; then
     echo
     echo "!! Backend belum sehat. 30 baris log terakhir:"
-    journalctl -u foodgo-backend -n 30 --no-pager || true
+    journalctl -u degofood-backend -n 30 --no-pager || true
 fi
