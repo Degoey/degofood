@@ -67,7 +67,20 @@ if (Test-Path $buildGradle) {
 }
 
 # Build APK
-& ".\venv\Scripts\flet.exe" "build" "apk" "--project" "DEGOFOOD" "--org" "com.degofood" "--description" "Aplikasi pemesanan makanan DEGOFOOD" "--verbose" "--no-rich-output" "."
+# PENTING: JANGAN panggil ".\venv\Scripts\flet.exe".
+# Launcher .exe buatan pip menyimpan path absolut venv saat dibuat
+# (mis. "#!D:\FOODGO\mobile_app\venv\Scripts\python.exe"), sehingga
+# langsung rusak begitu folder repo di-rename. Paket flet sendiri tidak
+# punya __main__, jadi dipanggil lewat modul flet.cli - tahan rename.
+$fletArgs = @(
+    "-c", "import sys; from flet.cli import main; sys.exit(main())",
+    "build", "apk",
+    "--project", "DEGOFOOD",
+    "--org", "com.degofood",
+    "--description", "Aplikasi pemesanan makanan DEGOFOOD",
+    "--verbose", "--no-rich-output", "."
+)
+& ".\venv\Scripts\python.exe" @fletArgs
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "Build selesai. Cek folder build\apk untuk hasilnya." -ForegroundColor Green
