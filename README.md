@@ -328,6 +328,27 @@ foreach ($f in @("$venv\pyvenv.cfg", "$venv\Scripts\activate.bat", "$venv\Script
     }
 }
 ```
+**Tambal launcher `.exe` (lebih tuntas).** Path absolut juga tersimpan **di dalam**
+file `.exe` (`uvicorn.exe`, `pip.exe`, `flet.exe`, ...) sebagai shebang, dan di file
+script tanpa ekstensi (`activate`, `pri*`). Keduanya bisa ditambal **tanpa install
+ulang**, dengan menulis ulang byte shebang:
+
+```powershell
+$old = '#!D:\FOODGO\'
+$new = '#!D:\DEGOFOOD\'
+$enc = [System.Text.Encoding]::GetEncoding(28591)   # Latin-1: byte apa pun aman
+Get-ChildItem 'D:\DEGOFOOD\*\venv\Scripts' -Filter '*.exe' | ForEach-Object {
+    $teks = $enc.GetString([System.IO.File]::ReadAllBytes($_.FullName))
+    if ($teks.Contains($old)) {
+        [System.IO.File]::WriteAllBytes($_.FullName, $enc.GetBytes($teks.Replace($old, $new)))
+        Write-Host "ditambal: $($_.Name)"
+    }
+}
+```
+
+Cara ini sudah otomatis dijalankan oleh menu **9. Tambal path lama di venv**
+(`Perbaiki-Venv-DEGOFOOD.ps1`), yang menambal `pyvenv.cfg`, seluruh file teks di
+`Scripts\`, dan semua launcher `.exe` di ketiga venv.
 
 ### Port 8000 / 8001 sudah dipakai
 

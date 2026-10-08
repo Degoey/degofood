@@ -18,4 +18,9 @@ $mainContent = $mainContent -replace "API_BASE_URL = .*", "API_BASE_URL = '$ApiU
 Set-Content -Path $mainPath -Value $mainContent -NoNewline
 
 Write-Host "Menjalankan DEGOFOOD Mobile dengan API_BASE_URL = $ApiUrl" -ForegroundColor Green
-& ".\venv\Scripts\flet.exe" "run" "main.py"
+# PENTING: JANGAN panggil ".\venv\Scripts\flet.exe".
+# Launcher .exe buatan pip menyimpan path absolut venv saat dibuat
+# (mis. "#!D:\FOODGO\mobile_app\venv\Scripts\python.exe"), sehingga
+# rusak begitu folder repo di-rename. Paket flet tidak punya __main__,
+# jadi dipanggil lewat modul flet.cli - tahan rename.
+& ".\venv\Scripts\python.exe" -c "import sys; from flet.cli import main; sys.exit(main())" run main.py
