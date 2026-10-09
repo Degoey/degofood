@@ -14,7 +14,7 @@ from datetime import datetime
 # - APK di jaringan lokal: http://<IP_LAN>:8000
 # - Produksi: domain server backend yang sudah dideploy
 #   (script build_apk.ps1 -ApiUrl "..." akan menimpa nilai ini saat build)
-API_BASE_URL = 'https://api.45.66.153.146.sslip.io'
+API_BASE_URL = 'https://degofood.my.id'
 
 PRIMARY = ft.Colors.ORANGE_600
 ACCENT = ft.Colors.ORANGE_700
@@ -137,9 +137,14 @@ class DEGOFOODApp:
 
     def _load_server_url(self):
         try:
-            return self.page.client_storage.get(SERVER_URL_KEY) or API_BASE_URL
+            saved = (self.page.client_storage.get(SERVER_URL_KEY) or '').strip()
         except Exception:
             return API_BASE_URL
+        # Abaikan URL lama yang menunjuk jaringan lokal (mis. http://192.168.1.6:8000)
+        # supaya APK pelanggan selalu memakai server produksi.
+        if saved.startswith('http://') and not saved.startswith(('http://127.0.0.1', 'http://localhost')):
+            return API_BASE_URL
+        return saved or API_BASE_URL
 
     def _save_server_url(self, url: str):
         try:
@@ -198,7 +203,7 @@ class DEGOFOODApp:
             ),
             content=ft.Column(
                 alignment=ft.MainAxisAlignment.END,
-                cross_axis_alignment=ft.CrossAxisAlignment.START,
+                horizontal_alignment=ft.CrossAxisAlignment.START,
                 spacing=4,
                 controls=controls,
             ),
@@ -334,8 +339,8 @@ class DEGOFOODApp:
                         ],
                     ),
                     ft.Container(
-                        alignment=ft.alignment.top_right,
-                        padding=ft.padding.only(top=40, right=24),
+                        right=24,
+                        top=40,
                         content=ft.IconButton(
                             icon=ft.Icons.SETTINGS,
                             icon_color=ft.Colors.GREY_700,
@@ -549,6 +554,7 @@ class DEGOFOODApp:
         addr = ft.TextField(label='Alamat Pengiriman', value=self.customer.get('address', ''), multiline=True, min_lines=2, max_lines=4)
         notes = ft.TextField(label='Catatan (opsional)', multiline=True, min_lines=2, max_lines=4)
         col = ft.Column(spacing=12, expand=True, scroll=ft.ScrollMode.AUTO)
+        err = ft.Text('', color=ft.Colors.RED_400, size=14, text_align=ft.TextAlign.CENTER)
         sub = ft.Text(fmt_price(0), weight=ft.FontWeight.BOLD, size=14)
         total = ft.Text(fmt_price(DELIVERY_FEE), weight=ft.FontWeight.BOLD, size=20, color=ACCENT)
         btn = ft.ElevatedButton(
@@ -557,8 +563,138 @@ class DEGOFOODApp:
             height=50,
             color=ft.Colors.WHITE,
             bgcolor=PRIMARY,
+            disabled=True,
             style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12)),
         )
+
+        def refresh():
+            col.controls.clear()
+            items_total = 0
+            for it in self.cart:
+                line = it['price'] * it['quantity']
+                items_total += line
+
+                def minus(e, item=it):
+                    item['quantity'] -= 1
+                    if item['quantity'] <= 0:
+                        self.cart.remove(item)
+                    refresh()
+
+                def plus(e, item=it):
+                    item['quantity'] += 1
+                    refresh()
+
+                col.controls.append(ft.Container(
+                    padding=12,
+                    border_radius=12,
+                    bgcolor=ft.Colors.WHITE,
+                    content=ft.Column(spacing=6, controls=[
+                        ft.Row(controls=[
+                            ft.Text(it['name'], weight=ft.FontWeight.BOLD, size=15, expand=True),
+                            ft.Text(fmt_price(line), color=ACCENT, weight=ft.FontWeight.BOLD, size=14),
+                        ]),
+                        ft.Row(spacing=8, controls=[
+                            ft.Text(fmt_price(it['price']) + ' / porsi', color=ft.Colors.GREY_600, size=12, expand=True),
+                            ft.IconButton(icon=ft.Icons.REMOVE_CIRCLE_OUTLINE, icon_color=PRIMARY, on_click=minus),
+                            ft.Text(str(it['quantity']), weight=ft.FontWeight.BOLD, size=15),
+                            ft.IconButton(icon=ft.Icons.ADD_CIRCLE_OUTLINE, icon_color=PRIMARY, on_click=plus),
+                        ]),
+                    ]),
+                ))
+            if not self.cart:
+                col.controls.append(self.empty(ft.Icons.SHOPPING_CART_OUTLINED, 'Keranjang masih kosong'))
+            sub.value = fmt_price(items_total)
+            total.value = fmt_price(items_total + DELIVERY_FEE)
+            btn.disabled = not self.cart
+            self.update_badge()
+            self.page.update()
+
+        def checkout(e):
+            err.value = ''
+            if not self.cart:
+                err.value = 'Keranjang masih kosong.'
+                self.page.update()
+                return
+            if not self.restaurant_id:
+                err.value = 'Pilih restoran dulu dari halaman Home.'
+                self.page.update()
+                return
+            address = (addr.value or '').strip()
+            if len(address) < 8:
+                err.value = 'Alamat pengiriman wajib diisi (minimal 8 karakter).'
+                self.page.update()
+                return
+            payload = {
+                'customer_id': self.customer['id'],
+                'restaurant_id': self.restaurant_id,
+                'delivery_address': address,
+                'notes': (notes.value or '').strip() or None,
+                'items': [{'menu_id': i['menu_id'], 'quantity': i['quantity']} for i in self.cart],
+            }
+            btn.disabled = True
+            self.page.update()
+            try:
+                r = self.api.post('/api/orders/', payload)
+                if r.status_code >= 400:
+                    raise Exception(r.text)
+                order = r.json()
+                if address != self.customer.get('address'):
+                    try:
+                        self.api.put(f"/api/customers/{self.customer['id']}", {'address': address})
+                        self.customer['address'] = address
+                        self.save_customer()
+                    except Exception:
+                        pass
+                self.cart.clear()
+                notes.value = ''
+                self.snack(f"Pesanan #{order.get('id')} terkirim, menunggu konfirmasi", ft.Colors.GREEN_700)
+                self.orders_page()
+            except Exception:
+                err.value = 'Gagal mengirim pesanan. Cek koneksi internet lalu coba lagi.'
+                btn.disabled = False
+                self.page.update()
+
+        btn.on_click = checkout
+
+        self.page.views.clear()
+        self.page.views.append(ft.View('/cart', padding=0, controls=[
+            ft.Column(expand=True, spacing=0, controls=[
+                self.header('Keranjang', subtitle=self.restaurant_name, back=lambda e: self.home()),
+                ft.Container(expand=True, padding=16, content=ft.Column(expand=True, spacing=14, scroll=ft.ScrollMode.AUTO, controls=[
+                    col,
+                    addr,
+                    notes,
+                    ft.Container(
+                        padding=16,
+                        border_radius=12,
+                        bgcolor=ft.Colors.WHITE,
+                        content=ft.Column(spacing=6, controls=[
+                            ft.Row(controls=[
+                                ft.Text('Subtotal', size=13, color=ft.Colors.GREY_600),
+                                ft.Container(expand=True),
+                                sub,
+                            ]),
+                            ft.Row(controls=[
+                                ft.Text('Ongkos kirim', size=13, color=ft.Colors.GREY_600),
+                                ft.Container(expand=True),
+                                ft.Text(fmt_price(DELIVERY_FEE), size=14),
+                            ]),
+                            ft.Divider(),
+                            ft.Row(controls=[
+                                ft.Text('Total', weight=ft.FontWeight.BOLD, size=15),
+                                ft.Container(expand=True),
+                                total,
+                            ]),
+                        ]),
+                    ),
+                    err,
+                    btn,
+                ])),
+            ])
+        ]))
+        self.page.navigation_bar = self.nav
+        self.page.update()
+        refresh()
 
     # ---- Orders ----
     def orders_page(self):
