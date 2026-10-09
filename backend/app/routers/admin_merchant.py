@@ -21,7 +21,7 @@ from ..database import get_db
 from .. import merchant_models as mm
 from .. import merchant_schemas as ms
 from .. import models
-from ..merchant_security import hash_password
+from ..merchant_security import hash_password, normalize_email, normalize_phone
 
 router = APIRouter(tags=['Admin Merchant'])
 
@@ -133,6 +133,107 @@ def admin_reset_merchant_password(account_id: int, payload: ms.AdminPasswordRese
     db.commit()
     return {'message': 'Password direset dan semua token lama dicabut.', 'account_id': account.id,
             'tokens_revoked': int(revoked or 0)}
+
+
+# --------------------------------------------------------------------------- #
+# Self-registration review: pending -> approve + explicit restaurant ownership
+# --------------------------------------------------------------------------- #
+def _registration_payload(row: mm.MerchantRegistration) -> dict:
+    return {c: getattr(row, c) for c in (
+        'id', 'status', 'name', 'phone', 'email', 'store_name', 'address', 'note',
+        'restaurant_id', 'account_id', 'ip', 'review_note', 'reviewed_by',
+        'reviewed_at', 'created_at')}
+
+
+@router.get('/merchant-registrations', response_model=List[ms.AdminMerchantRegistrationResponse])
+def admin_list_registrations(status: Optional[str] = None, db: Session = Depends(get_db),
+                             _=Depends(_require_admin_key)):
+    q = db.query(mm.MerchantRegistration)
+    if status:
+        q = q.filter(mm.MerchantRegistration.status == status)
+    rows = q.order_by(mm.MerchantRegistration.id.desc()).all()
+    return [_registration_payload(r) for r in rows]
+
+
+@router.post('/merchant-registrations/{registration_id}/approve',
+             response_model=ms.AdminMerchantRegistrationResponse)
+def admin_approve_registration(registration_id: int, payload: ms.AdminRegistrationApprove,
+                               db: Session = Depends(get_db), _=Depends(_require_admin_key)):
+    row = db.query(mm.MerchantRegistration).filter(mm.MerchantRegistration.id == registration_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail='Pendaftaran merchant tidak ditemukan.')
+    if row.status != 'pending':
+        raise HTTPException(status_code=409, detail=f'Pendaftaran sudah berstatus {row.status}.')
+    if bool(payload.restaurant_id) == bool(payload.new_restaurant):
+        raise HTTPException(status_code=422,
+                            detail='Pilih tepat satu: restaurant_id yang sudah ada ATAU new_restaurant.')
+
+    if payload.restaurant_id:
+        restaurant = db.query(models.Restaurant).filter(models.Restaurant.id == payload.restaurant_id).first()
+        if not restaurant:
+            raise HTTPException(status_code=404, detail='Restoran tujuan tidak ditemukan.')
+    else:
+        nr = payload.new_restaurant
+        restaurant = models.Restaurant(name=nr.name.strip(), address=nr.address.strip(),
+                                       phone=normalize_phone(nr.phone) or nr.phone.strip(), is_open=True)
+        db.add(restaurant)
+        db.flush()
+
+    existing = db.query(mm.MerchantAccount).filter(
+        mm.MerchantAccount.restaurant_id == restaurant.id).first()
+    if existing:
+        raise HTTPException(status_code=409, detail='Restoran sudah memiliki akun merchant.')
+    for field, value in ((mm.MerchantAccount.phone, row.phone), (mm.MerchantAccount.email, row.email)):
+        if value and db.query(mm.MerchantAccount).filter(field == value).first():
+            raise HTTPException(status_code=409, detail='Nomor HP/email sudah dipakai akun lain.')
+
+    account = mm.MerchantAccount(restaurant_id=restaurant.id, name=row.name, phone=row.phone,
+                                 email=row.email, password_hash=row.password_hash,
+                                 is_active=payload.is_active, created_by='admin:registration')
+    db.add(account)
+    db.flush()
+    row.status = 'approved'
+    row.restaurant_id = restaurant.id
+    row.account_id = account.id
+    row.review_note = payload.note
+    row.reviewed_by = 'admin'
+    row.reviewed_at = datetime.utcnow()
+    db.commit()
+    db.refresh(row)
+    return _registration_payload(row)
+
+
+@router.post('/merchant-registrations/{registration_id}/reject',
+             response_model=ms.AdminMerchantRegistrationResponse)
+def admin_reject_registration(registration_id: int, payload: ms.AdminRegistrationReject,
+                              db: Session = Depends(get_db), _=Depends(_require_admin_key)):
+    row = db.query(mm.MerchantRegistration).filter(mm.MerchantRegistration.id == registration_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail='Pendaftaran merchant tidak ditemukan.')
+    if row.status != 'pending':
+        raise HTTPException(status_code=409, detail=f'Pendaftaran sudah berstatus {row.status}.')
+    row.status, row.review_note, row.reviewed_by, row.reviewed_at = 'rejected', payload.note, 'admin', datetime.utcnow()
+    db.commit()
+    db.refresh(row)
+    return _registration_payload(row)
+
+
+@router.post('/merchants/{account_id}/link-restaurant', response_model=ms.AdminMerchantResponse)
+def admin_link_restaurant(account_id: int, payload: ms.AdminMerchantLinkRestaurant,
+                          db: Session = Depends(get_db), _=Depends(_require_admin_key)):
+    account = db.query(mm.MerchantAccount).filter(mm.MerchantAccount.id == account_id).first()
+    restaurant = db.query(models.Restaurant).filter(models.Restaurant.id == payload.restaurant_id).first()
+    if not account or not restaurant:
+        raise HTTPException(status_code=404, detail='Akun atau restoran tidak ditemukan.')
+    occupied = db.query(mm.MerchantAccount).filter(
+        mm.MerchantAccount.restaurant_id == restaurant.id,
+        mm.MerchantAccount.id != account.id).first()
+    if occupied:
+        raise HTTPException(status_code=409, detail='Restoran sudah dimiliki akun merchant lain.')
+    account.restaurant_id = restaurant.id
+    db.commit()
+    db.refresh(account)
+    return _merchant_payload(account)
 
 
 # --------------------------------------------------------------------------- #

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}DEGOFOOD Admin{% endblock %}</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    {% block head %}{% endblock %}
 </head>
 <body class="bg-gray-100 min-h-screen">
 
@@ -15,6 +16,7 @@
                 <a href="/" class="px-4 py-2 rounded-lg text-white text-sm font-semibold {% if active == 'dashboard' %}bg-orange-700{% else %}hover:bg-orange-600{% endif %}">Dashboard</a>
                 <a href="/orders" class="px-4 py-2 rounded-lg text-white text-sm font-semibold {% if active == 'orders' %}bg-orange-700{% else %}hover:bg-orange-600{% endif %}">Pesanan</a>
                 <a href="/restaurants" class="px-4 py-2 rounded-lg text-white text-sm font-semibold {% if active == 'restaurants' %}bg-orange-700{% else %}hover:bg-orange-600{% endif %}">Restoran</a>
+                <a href="/merchants" class="px-4 py-2 rounded-lg text-white text-sm font-semibold {% if active == 'merchants' %}bg-orange-700{% else %}hover:bg-orange-600{% endif %}">Merchant</a>
                 {% if active != 'login' %}
                 <a href="/logout" class="px-4 py-2 rounded-lg text-white text-sm font-semibold hover:bg-orange-600">Logout</a>
                 {% endif %}

@@ -16,6 +16,8 @@ _TMP_DB = os.path.join(tempfile.mkdtemp(prefix='degofood-test-'), 'test.db')
 os.environ['DATABASE_URL'] = f'sqlite:///{_TMP_DB}'
 os.environ['ADMIN_API_KEY'] = 'test-admin-key'
 os.environ['MERCHANT_LOGIN_MAX_FAILS'] = '5'
+os.environ['MERCHANT_REGISTER_MIN_INTERVAL_SECONDS'] = '0'
+os.environ['MERCHANT_REGISTER_MAX_PER_WINDOW'] = '5'
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -244,6 +246,151 @@ def main():
     check('menu pelanggan masih terbaca', r.status_code == 200, f'{r.status_code} {r.text[:150]}')
     r = client.get('/api/health')
     check('health check', r.status_code == 200, f'{r.status_code}')
+
+    print('\n== 9. Pendaftaran mandiri merchant (pending -> approve admin) ==')
+    from app import merchant_models as mm  # noqa: E402
+    db = SessionLocal()
+    accounts_before = db.query(mm.MerchantAccount).count()
+    db.close()
+
+    r = client.post('/api/merchant/auth/register', json={
+        'name': 'Calon Merchant C', 'phone': '0812-3333-4444', 'password': 'rahasia789',
+        'store_name': 'Toko C', 'address': 'Jl. C Baru'})
+    check('register via nomor HP -> 201 status pending',
+          r.status_code == 201 and r.json().get('status') == 'pending', f'{r.status_code} {r.text[:200]}')
+    reg_c = r.json() if r.status_code == 201 else {}
+    check('nomor HP register dinormalisasi ke +62',
+          reg_c.get('phone') == '+62' + '81233334444', str(reg_c.get('phone')))
+    check('register tidak mengembalikan token/akses', 'token' not in reg_c, str(reg_c))
+
+    r = client.post('/api/merchant/auth/register', json={
+        'name': 'Calon Merchant D', 'email': 'D@Example.COM', 'password': 'rahasia789'})
+    check('register via email -> 201 pending', r.status_code == 201, f'{r.status_code} {r.text[:200]}')
+    reg_d = r.json() if r.status_code == 201 else {}
+    check('email register dinormalisasi lowercase', reg_d.get('email') == 'd@example.com', str(reg_d.get('email')))
+
+    db = SessionLocal()
+    accounts_after = db.query(mm.MerchantAccount).count()
+    reg_row = db.query(mm.MerchantRegistration).filter(mm.MerchantRegistration.id == reg_c.get('id')).first()
+    stored_hash = reg_row.password_hash if reg_row else ''
+    db.close()
+    check('register TIDAK membuat akun merchant (tetap pending)',
+          accounts_after == accounts_before, f'{accounts_before} -> {accounts_after}')
+    check('password disimpan sebagai hash (bukan plaintext)',
+          stored_hash.startswith(('scrypt$', 'pbkdf2$')) and 'rahasia789' not in stored_hash, stored_hash[:24])
+
+    r = client.post('/api/merchant/auth/register', json={'name': 'Tanpa Identitas', 'password': 'rahasia789'})
+    check('register tanpa HP/email ditolak 422', r.status_code == 422, f'{r.status_code}')
+    r = client.post('/api/merchant/auth/register', json={'name': 'Email Salah', 'email': 'bukan-email', 'password': 'rahasia789'})
+    check('format email salah ditolak 422', r.status_code == 422, f'{r.status_code}')
+    r = client.post('/api/merchant/auth/register', json={'name': 'Pwd Tanpa Huruf', 'phone': '081234444555', 'password': '12345678'})
+    check('password tanpa huruf ditolak 422', r.status_code == 422, f'{r.status_code} {r.text[:120]}')
+    r = client.post('/api/merchant/auth/register', json={'name': 'Pwd Pendek', 'phone': '081234444556', 'password': 'raha1'})
+    check('password kurang dari 8 karakter ditolak 422', r.status_code == 422, f'{r.status_code}')
+    r = client.post('/api/merchant/auth/register', json={'name': 'HP Pendek', 'phone': '08123', 'password': 'rahasia789'})
+    check('nomor HP tidak valid ditolak 422', r.status_code == 422, f'{r.status_code}')
+
+    r = client.post('/api/merchant/auth/register', json={'name': 'Duplikat HP', 'phone': '0812-3333-4444', 'password': 'rahasia789'})
+    check('daftar ulang dengan HP sama ditolak 409', r.status_code == 409, f'{r.status_code}')
+    r = client.post('/api/merchant/auth/register', json={'name': 'Duplikat Email', 'email': 'd@example.com', 'password': 'rahasia789'})
+    check('daftar ulang dengan email sama ditolak 409', r.status_code == 409, f'{r.status_code}')
+    r = client.post('/api/merchant/auth/register', json={'name': 'Pakai HP Akun', 'phone': '0812-1111-2222', 'password': 'rahasia789'})
+    check('HP yang sudah jadi akun merchant ditolak 409', r.status_code == 409, f'{r.status_code}')
+
+    r = client.post('/api/merchant/auth/login', json={'identifier': '0812-3333-4444', 'password': 'rahasia789'})
+    check('login saat masih pending ditolak 403', r.status_code == 403, f'{r.status_code} {r.text[:200]}')
+    check('pesan login pending menyebut menunggu verifikasi',
+          'MENUNGGU VERIFIKASI' in r.text.upper(), r.text[:200])
+
+    r = client.post('/api/merchant/auth/register', json={
+        'name': 'Pemakai HP Restoran A', 'phone': '081200000001', 'password': 'rahasia789'})
+    check('register dengan nomor HP restoran tetap diterima sebagai pending',
+          r.status_code == 201 and r.json().get('status') == 'pending', f'{r.status_code} {r.text[:200]}')
+    reg_claim = r.json() if r.status_code == 201 else {}
+    check('pendaftaran TIDAK mengklaim restoran otomatis',
+          'restaurant_id' not in reg_claim, str(reg_claim))
+
+    r = client.get('/api/admin/merchant-registrations')
+    check('admin list registrations tanpa X-Admin-Key ditolak 401', r.status_code == 401, f'{r.status_code}')
+    r = client.get('/api/admin/merchant-registrations?status=pending', headers=ADMIN)
+    check('admin bisa melihat daftar pendaftaran pending',
+          r.status_code == 200 and len(r.json()) >= 3, f'{r.status_code} {r.text[:200]}')
+    check('pendaftaran pending belum punya account_id/restaurant_id',
+          all(x['account_id'] is None and x['restaurant_id'] is None
+              for x in r.json() if x['status'] == 'pending'), r.text[:200])
+
+    r = client.post(f'/api/admin/merchant-registrations/{reg_c.get("id")}/approve', headers=ADMIN,
+                    json={'new_restaurant': {'name': 'Warung C', 'address': 'Jl. C No. 9',
+                                             'phone': '081255550000'}})
+    check('admin approve + buat restoran baru', r.status_code == 200 and r.json().get('status') == 'approved',
+          f'{r.status_code} {r.text[:200]}')
+    approved = r.json() if r.status_code == 200 else {}
+    check('approve menautkan restoran + akun merchant',
+          bool(approved.get('restaurant_id')) and bool(approved.get('account_id')), str(approved))
+
+    r = client.post('/api/merchant/auth/login', json={'identifier': '0812-3333-4444', 'password': 'rahasia789'})
+    check('login setelah approve pakai password buatan merchant sendiri',
+          r.status_code == 200, f'{r.status_code} {r.text[:200]}')
+    tok_c = r.json().get('token') if r.status_code == 200 else None
+    C = {'Authorization': f'Bearer {tok_c}'}
+    r = client.get('/api/merchant/me', headers=C)
+    check('akun baru hanya terhubung restoran yang ditautkan admin',
+          r.status_code == 200 and r.json().get('restaurant_id') == approved.get('restaurant_id'),
+          f'{r.status_code} {r.text[:200]}')
+    r = client.get(f'/api/merchant/orders/{ids["order"]}', headers=C)
+    check('isolasi: merchant baru tidak bisa lihat order restoran lain', r.status_code == 404, f'{r.status_code}')
+    r = client.get('/api/merchant/menus', headers=C)
+    check('merchant baru mulai dengan menu kosong', r.status_code == 200 and r.json() == [], f'{r.text[:150]}')
+
+    r = client.post(f'/api/admin/merchant-registrations/{reg_c.get("id")}/approve', headers=ADMIN,
+                    json={'new_restaurant': {'name': 'Warung C2', 'address': 'Jl. Y', 'phone': '081255550001'}})
+    check('approve dua kali ditolak 409', r.status_code == 409, f'{r.status_code}')
+    r = client.post(f'/api/admin/merchant-registrations/{reg_d.get("id")}/approve', headers=ADMIN,
+                    json={'restaurant_id': ids['r1']})
+    check('approve link ke restoran yang sudah berakun ditolak 409', r.status_code == 409, f'{r.status_code}')
+    r = client.post(f'/api/admin/merchant-registrations/{reg_d.get("id")}/approve', headers=ADMIN,
+                    json={})
+    check('approve tanpa restoran_id/new_restaurant ditolak 422', r.status_code == 422, f'{r.status_code}')
+
+    free = client.post('/api/restaurants/', json={'name': 'Warung D', 'address': 'Jl. D',
+                                                  'phone': '081255550002'})
+    check('siapkan restoran bebas untuk link', free.status_code in (200, 201), f'{free.status_code} {free.text[:150]}')
+    free_id = free.json().get('id') if free.status_code in (200, 201) else None
+    r = client.post(f'/api/admin/merchant-registrations/{reg_d.get("id")}/approve', headers=ADMIN,
+                    json={'restaurant_id': free_id})
+    check('approve dengan link restoran yang sudah ada', r.status_code == 200 and
+          r.json().get('restaurant_id') == free_id, f'{r.status_code} {r.text[:200]}')
+
+    r = client.post('/api/admin/merchants/%d/link-restaurant' % approved.get('account_id', 0),
+                    headers=ADMIN, json={'restaurant_id': free_id})
+    check('admin link-restaurant ke restoran yang sudah dipakai ditolak 409', r.status_code == 409, f'{r.status_code}')
+    r = client.post('/api/admin/merchants/%d/link-restaurant' % approved.get('account_id', 0),
+                    headers=ADMIN, json={'restaurant_id': free_id})
+    r = client.post('/api/admin/merchants/%d/link-restaurant' % approved.get('account_id', 0), headers=ADMIN,
+                    json={'restaurant_id': ids['r2']})
+    check('admin link-restaurant ke restoran yang sudah berakun ditolak 409', r.status_code == 409, f'{r.status_code}')
+    r = client.get('/api/admin/merchants', headers=ADMIN)
+    check('tidak ada akun otomatis dari nomor HP restoran',
+          all(a.get('phone') != '+6281200000001' for a in r.json()), r.text[:200])
+
+    r = client.post(f'/api/admin/merchant-registrations/{reg_claim.get("id")}/reject', headers=ADMIN,
+                    json={'note': 'Nomor HP belum bisa diverifikasi ke pemilik toko.'})
+    check('admin reject pendaftaran', r.status_code == 200 and r.json().get('status') == 'rejected',
+          f'{r.status_code} {r.text[:200]}')
+    r = client.post('/api/merchant/auth/login', json={'identifier': '081200000001', 'password': 'rahasia789'})
+    check('login pendaftaran yang ditolak -> 403 dengan alasan',
+          r.status_code == 403 and 'ditolak' in r.text.lower(), f'{r.status_code} {r.text[:200]}')
+    r = client.get('/api/admin/merchant-registrations?status=rejected', headers=ADMIN)
+    check('admin bisa filter pendaftaran ditolak', r.status_code == 200 and len(r.json()) >= 1, f'{r.status_code}')
+
+    blocked = False
+    for i in range(8):
+        rr = client.post('/api/merchant/auth/register', json={
+            'name': f'Spam {i}', 'phone': f'08129999000{i}', 'password': 'rahasia789'})
+        if rr.status_code == 429:
+            blocked = True
+            break
+    check('rate limit anti-abuse pendaftaran aktif (429)', blocked, 'tidak pernah kena 429')
 
     print(f'\n===== HASIL: {len(PASSED)} lulus, {len(FAILED)} gagal =====')
     for f in FAILED:

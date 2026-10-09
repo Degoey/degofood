@@ -30,7 +30,7 @@ class MerchantAccount(Base):
     __tablename__ = 'merchant_accounts'
 
     id = Column(Integer, primary_key=True, index=True)
-    restaurant_id = Column(Integer, ForeignKey('restaurants.id'), nullable=False, index=True)
+    restaurant_id = Column(Integer, ForeignKey('restaurants.id'), nullable=True, index=True)
     name = Column(String, nullable=False)
     phone = Column(String, nullable=True, unique=True, index=True)
     email = Column(String, nullable=True, unique=True, index=True)
@@ -199,6 +199,37 @@ class MerchantWithdrawal(Base):
     reviewed_at = Column(DateTime, nullable=True)
     reviewed_by = Column(String, nullable=True)
     ledger_entry_id = Column(Integer, nullable=True)
+
+
+class MerchantRegistration(Base):
+    """Pendaftaran mandiri calon merchant (BELUM punya akses apa pun).
+
+    Baris di sini hanya sebuah PERMOHONAN. Akun di `merchant_accounts` baru dibuat
+    saat admin menyetujui (approve) sekaligus menautkan restoran. Selama status
+    masih `pending`, login ditolak dan tidak ada data/order yang bisa diakses.
+
+    Restoran TIDAK PERNAH diklaim otomatis dari nomor HP: admin yang menentukan
+    restoran mana yang ditautkan (atau membuat restoran baru).
+    """
+
+    __tablename__ = 'merchant_registrations'
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    phone = Column(String, nullable=True, index=True)
+    email = Column(String, nullable=True, index=True)
+    password_hash = Column(String, nullable=False)
+    store_name = Column(String, nullable=True)
+    address = Column(String, nullable=True)
+    note = Column(String, nullable=True)
+    status = Column(String, default='pending', nullable=False, index=True)  # pending|approved|rejected
+    restaurant_id = Column(Integer, ForeignKey('restaurants.id'), nullable=True)
+    account_id = Column(Integer, ForeignKey('merchant_accounts.id'), nullable=True)
+    ip = Column(String, nullable=True, index=True)
+    review_note = Column(String, nullable=True)
+    reviewed_by = Column(String, nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
 
 class MerchantOrderEvent(Base):

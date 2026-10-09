@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -33,7 +33,9 @@ from ..merchant_security import (
     issue_token,
     login_blocked,
     owned_restaurant_id,
+    password_policy_error,
     record_login_attempt,
+    registration_rate_limit,
     revoke_token,
     verify_password,
 )
@@ -77,6 +79,26 @@ def _is_email(identifier: str) -> bool:
     return '@' in (identifier or '')
 
 
+_EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$')
+
+
+def _valid_email(value: Optional[str]) -> bool:
+    return bool(_EMAIL_RE.match((value or '').strip()))
+
+
+def _find_registration(db: Session, identifier: str) -> Optional[mm.MerchantRegistration]:
+    """Pendaftaran terakhir untuk identifier yang sama (dipakai saat login pending)."""
+    q = db.query(mm.MerchantRegistration)
+    if _is_email(identifier):
+        return q.filter(mm.MerchantRegistration.email == _norm_email(identifier)) \
+            .order_by(mm.MerchantRegistration.id.desc()).first()
+    phone = _norm_phone(identifier)
+    if not phone:
+        return None
+    return q.filter(mm.MerchantRegistration.phone == phone) \
+        .order_by(mm.MerchantRegistration.id.desc()).first()
+
+
 def _parse_date(value: Optional[str], end: bool = False) -> Optional[datetime]:
     if not value:
         return None
@@ -108,6 +130,18 @@ def merchant_login(payload: ms.MerchantLoginRequest, request: Request, db: Sessi
 
     if not account or not verify_password(payload.password, account.password_hash):
         record_login_attempt(db, norm_id, ip, success=False)
+        if not account:
+            reg = _find_registration(db, identifier)
+            if reg and reg.status == 'pending':
+                raise HTTPException(
+                    status_code=403,
+                    detail='Pendaftaran Anda masih MENUNGGU VERIFIKASI admin DEGOFOOD. '
+                           'Akun belum aktif dan belum bisa mengakses data/order.')
+            if reg and reg.status == 'rejected':
+                raise HTTPException(
+                    status_code=403,
+                    detail='Pendaftaran Anda ditolak admin. '
+                           + (reg.review_note or 'Hubungi admin DEGOFOOD untuk info lebih lanjut.'))
         raise HTTPException(status_code=401, detail='Nomor HP/email atau password salah.')
     if not account.is_active:
         record_login_attempt(db, norm_id, ip, success=False)
@@ -138,6 +172,70 @@ def merchant_login(payload: ms.MerchantLoginRequest, request: Request, db: Sessi
             },
         },
     }
+
+
+@router.post('/auth/register', response_model=ms.MerchantRegisterResponse, status_code=201)
+def merchant_register(payload: ms.MerchantRegisterRequest, request: Request,
+                      db: Session = Depends(get_db)):
+    """Pendaftaran mandiri merchant: nomor HP ATAU email + password pilihannya sendiri.
+
+    Akun TIDAK langsung aktif. Baris masuk sebagai `pending`; admin harus approve
+    DAN menautkan restoran sebelum login diizinkan. Nomor HP tidak pernah dipakai
+    untuk mengklaim restoran secara otomatis.
+    """
+    ip = request.client.host if request.client else None
+    phone = _norm_phone(payload.phone)
+    email = _norm_email(payload.email)
+
+    if not phone and not email:
+        raise HTTPException(status_code=422, detail='Isi nomor HP atau email (minimal salah satu).')
+    if phone and len(phone) < 11:
+        raise HTTPException(status_code=422, detail='Nomor HP tidak valid (contoh: 08123456789).')
+    if email and not _valid_email(email):
+        raise HTTPException(status_code=422, detail='Format email tidak valid.')
+
+    policy_error = password_policy_error(payload.password)
+    if policy_error:
+        raise HTTPException(status_code=422, detail=policy_error)
+
+    blocked = registration_rate_limit(db, ip)
+    if blocked:
+        raise HTTPException(status_code=429, detail=blocked)
+
+    if phone and db.query(mm.MerchantAccount).filter(mm.MerchantAccount.phone == phone).first():
+        raise HTTPException(status_code=409,
+                            detail='Nomor HP ini sudah terdaftar. Silakan masuk atau hubungi admin.')
+    if email and db.query(mm.MerchantAccount).filter(mm.MerchantAccount.email == email).first():
+        raise HTTPException(status_code=409,
+                            detail='Email ini sudah terdaftar. Silakan masuk atau hubungi admin.')
+
+    conds = []
+    if phone:
+        conds.append(mm.MerchantRegistration.phone == phone)
+    if email:
+        conds.append(mm.MerchantRegistration.email == email)
+    duplicate = db.query(mm.MerchantRegistration).filter(
+        mm.MerchantRegistration.status == 'pending', or_(*conds)).first()
+    if duplicate:
+        raise HTTPException(status_code=409,
+                            detail='Pendaftaran dengan nomor HP/email ini sudah ada dan masih '
+                                   'menunggu verifikasi admin.')
+
+    row = mm.MerchantRegistration(
+        name=payload.name.strip(),
+        phone=phone,
+        email=email,
+        password_hash=hash_password(payload.password),
+        store_name=(payload.store_name or '').strip() or None,
+        address=(payload.address or '').strip() or None,
+        status='pending',
+        ip=ip,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {'id': row.id, 'status': row.status, 'name': row.name, 'phone': row.phone,
+            'email': row.email, 'store_name': row.store_name, 'created_at': row.created_at}
 
 
 @router.post('/auth/logout')

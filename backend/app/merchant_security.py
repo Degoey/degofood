@@ -9,6 +9,7 @@
 import hashlib
 import hmac
 import os
+import re
 import secrets
 from datetime import datetime, timedelta
 from typing import Optional
@@ -160,6 +161,74 @@ def get_owned_menu(db: Session, account: mm.MerchantAccount, menu_id: int):
     if not menu:
         raise HTTPException(status_code=404, detail='Menu tidak ditemukan untuk restoran Anda.')
     return menu
+
+
+# --------------------------------------------------------------------------- #
+# Pendaftaran mandiri: validasi + anti abuse
+# --------------------------------------------------------------------------- #
+REGISTER_MAX_PER_WINDOW = int(os.getenv('MERCHANT_REGISTER_MAX_PER_WINDOW', '5'))
+REGISTER_WINDOW_SECONDS = int(os.getenv('MERCHANT_REGISTER_WINDOW_SECONDS', '3600'))
+REGISTER_MIN_INTERVAL_SECONDS = int(os.getenv('MERCHANT_REGISTER_MIN_INTERVAL_SECONDS', '30'))
+
+_EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$')
+
+
+def normalize_phone(raw: Optional[str]) -> Optional[str]:
+    """'0812-1111-2222' / '+62812...' / '62812...' -> '+6281211112222'."""
+    digits = re.sub(r'[^0-9]', '', raw or '')
+    if digits.startswith('62'):
+        digits = digits[2:]
+    elif digits.startswith('0'):
+        digits = digits[1:]
+    if not digits:
+        return None
+    return '+62' + digits
+
+
+def normalize_email(raw: Optional[str]) -> Optional[str]:
+    value = (raw or '').strip().lower()
+    return value or None
+
+
+def valid_email(value: Optional[str]) -> bool:
+    return bool(_EMAIL_RE.match((value or '').strip()))
+
+
+def password_policy_error(password: Optional[str]) -> Optional[str]:
+    """Kembalikan pesan kalau password lemah, None kalau lolos kebijakan."""
+    p = password or ''
+    if len(p) < 8:
+        return 'Password minimal 8 karakter.'
+    if len(p) > 200:
+        return 'Password terlalu panjang (maksimal 200 karakter).'
+    if not re.search(r'[A-Za-z]', p):
+        return 'Password harus memuat minimal satu huruf.'
+    if not re.search(r'[0-9]', p):
+        return 'Password harus memuat minimal satu angka.'
+    return None
+
+
+def registration_rate_limit(db: Session, ip: Optional[str]) -> Optional[str]:
+    """Anti abuse pendaftaran per IP. None = boleh lanjut, str = pesan blokir.
+
+    Dihitung dari tabel `merchant_registrations` (fail closed: tanpa IP asal,
+    pembatasan tidak dijalankan karena tidak ada pembanding yang bermakna).
+    """
+    if not ip:
+        return None
+    now = datetime.utcnow()
+    recent = db.query(mm.MerchantRegistration).filter(
+        mm.MerchantRegistration.ip == ip,
+        mm.MerchantRegistration.created_at >= now - timedelta(seconds=REGISTER_WINDOW_SECONDS),
+    ).order_by(mm.MerchantRegistration.created_at.desc()).all()
+    if len(recent) >= REGISTER_MAX_PER_WINDOW:
+        return ('Terlalu banyak pendaftaran dari jaringan ini. '
+                f'Coba lagi nanti (maksimal {REGISTER_MAX_PER_WINDOW} per jam).')
+    if recent and recent[0].created_at:
+        elapsed = (now - recent[0].created_at).total_seconds()
+        if elapsed < REGISTER_MIN_INTERVAL_SECONDS:
+            return 'Pendaftaran terlalu cepat. Tunggu sebentar sebelum mencoba lagi.'
+    return None
 
 
 def get_owned_order(db: Session, account: mm.MerchantAccount, order_id: int):

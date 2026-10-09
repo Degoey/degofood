@@ -316,3 +316,73 @@ class AdminWithdrawalReview(BaseModel):
 
 class AdminWithdrawalResponse(MerchantWithdrawalResponse):
     pass
+
+
+# --------------------------------------------------------------------------- #
+# Pendaftaran mandiri merchant (self-registration) + review admin
+# --------------------------------------------------------------------------- #
+class MerchantRegisterRequest(BaseModel):
+    """Merchant mendaftar sendiri: nomor HP ATAU email + password pilihannya sendiri."""
+
+    name: str = Field(min_length=2, max_length=120)
+    phone: Optional[str] = Field(default=None, max_length=30,
+                                 description='Nomor HP (08xx / +62xx / 62xx) — salah satu dari HP/email wajib ada')
+    email: Optional[str] = Field(default=None, max_length=120)
+    password: str = Field(min_length=8, max_length=200,
+                          description='Password buatan merchant sendiri (min 8 karakter, ada huruf & angka)')
+    store_name: Optional[str] = Field(default=None, max_length=120)
+    address: Optional[str] = Field(default=None, max_length=300)
+
+
+class MerchantRegisterResponse(BaseModel):
+    id: int
+    status: str
+    name: str
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    store_name: Optional[str] = None
+    created_at: datetime
+    message: str = ('Pendaftaran diterima. Akun BELUM aktif: tunggu verifikasi admin DEGOFOOD '
+                    'dan penautan restoran sebelum bisa masuk.')
+
+
+class AdminMerchantRegistrationResponse(BaseModel):
+    id: int
+    status: str
+    name: str
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    store_name: Optional[str] = None
+    address: Optional[str] = None
+    note: Optional[str] = None
+    restaurant_id: Optional[int] = None
+    account_id: Optional[int] = None
+    ip: Optional[str] = None
+    review_note: Optional[str] = None
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AdminRegistrationNewRestaurant(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    address: str = Field(min_length=3, max_length=300)
+    phone: str = Field(min_length=6, max_length=30)
+
+
+class AdminRegistrationApprove(BaseModel):
+    restaurant_id: Optional[int] = Field(default=None, description='Tautkan ke restoran yang sudah ada')
+    new_restaurant: Optional[AdminRegistrationNewRestaurant] = Field(
+        default=None, description='Buat restoran baru untuk merchant ini')
+    is_active: bool = True
+    note: Optional[str] = Field(default=None, max_length=300)
+
+
+class AdminRegistrationReject(BaseModel):
+    note: Optional[str] = Field(default=None, max_length=300)
+
+
+class AdminMerchantLinkRestaurant(BaseModel):
+    restaurant_id: int

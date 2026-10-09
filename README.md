@@ -20,7 +20,8 @@ Dibangun dengan **Python + FastAPI** (backend & admin) dan **Flet** (aplikasi mo
 - Kelola restoran: tambah, ubah, hapus, buka/tutup
 - Kelola menu: tambah, hapus, aktif/nonaktif
 - Kelola pesanan dan ubah statusnya
-- Login sesi untuk melindungi halaman admin
+- Login sesi untuk melindungi halaman admin/restoran
+- Merchant dapat daftar sendiri; admin memverifikasi pendaftaran lalu membuat/menautkan restoran dan mengaktifkan akun
 
 **Notifikasi WhatsApp**
 - Otomatis ke restoran saat ada pesanan baru masuk
@@ -37,6 +38,7 @@ Dibangun dengan **Python + FastAPI** (backend & admin) dan **Flet** (aplikasi mo
 | `backend/` | FastAPI + SQLAlchemy + SQLite | **8000** | REST API untuk mobile app & admin panel |
 | `admin_panel/` | FastAPI + Jinja2 | **8001** | Web UI admin/restoran (server-side rendering) |
 | `mobile_app/` | Flet (Python + Flutter) | — | Aplikasi mobile pelanggan, bisa di-build jadi APK |
+| `merchant_app/` | Flet (Python + Flutter) | — | Aplikasi merchant (login, pesanan, menu, keuangan), bisa di-build jadi APK |
 
 Admin panel **tidak** mengakses database secara langsung — semua lewat REST API backend.
 
@@ -132,7 +134,7 @@ python -m venv venv
 .\run_admin.ps1
 ```
 
-Buka http://127.0.0.1:8001 dan login dengan `admin` / `admin123` (default).
+Buka http://127.0.0.1:8001 dan login memakai kredensial admin dari `.env` (jangan menaruh password di README). Merchant mendaftar sendiri lewat aplikasi/API, lalu admin membuka menu Merchant untuk memeriksa dan menyetujui pendaftaran.
 
 Bila backend dijalankan di port lain, arahkan admin panel ke sana (dan opsional ubah port admin):
 

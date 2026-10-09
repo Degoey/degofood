@@ -27,7 +27,10 @@ $env:DEGOFOOD_PORT=8560; venv\Scripts\python main.py
 # lalu buka http://127.0.0.1:8560
 ```
 
-Login memakai akun merchant yang dibuat admin (nomor HP atau email + password).
+Login memakai akun merchant yang sudah diverifikasi admin (nomor HP atau email +
+password pilihan merchant sendiri). Merchant yang belum punya akun memakai tombol
+**Daftar** di layar login: isi nama, HP/email, dan password, lalu kirim. Akun **belum
+aktif** sampai admin DEGOFOOD memverifikasi pendaftaran dan menautkan restoran.
 
 ## 2. Build APK di laptop Windows
 
@@ -54,7 +57,8 @@ supaya APK tidak pernah menembak IP LAN seperti bug di aplikasi pelanggan.
 
 ## 3. Fitur yang tersedia
 
-- **Login**: identitas (HP/email) + password, auto-login saat aplikasi dibuka ulang
+- **Login**: identitas (HP/email) + password, tombol **Daftar** untuk pendaftaran mandiri
+  merchant (akun baru dipakai setelah admin memverifikasi), auto-login saat aplikasi dibuka ulang
   (divalidasi ke `/api/merchant/me`, 401 kembali ke layar login), pesan error server
   (401/429/422) ditampilkan apa adanya.
 - **Beranda**: kartu sambutan + badge Buka/Tutup + tombol cepat buka/tutup toko,
@@ -92,7 +96,11 @@ supaya APK tidak pernah menembak IP LAN seperti bug di aplikasi pelanggan.
   **saat aplikasi dibuka**; tidak ada push notification background.
 - **APK ditandatangani debug key.** Hasil `flet build apk` default memakai debug signing,
   jadi belum layak untuk Google Play Store (perlu keystore rilis + `--sign`/`--keystore`).
-- **Akun merchant dibuat admin**, tidak ada pendaftaran sendiri dari aplikasi.
+- **Pendaftaran mandiri.** Merchant mendaftar sendiri dari layar login (nama, HP/email,
+  password pilihannya, data toko) lewat `POST /api/merchant/auth/register`. Akun dibuat
+  admin saat verifikasi; sebelum diverifikasi, login ditolak dengan pesan "menunggu
+  verifikasi admin". Rate limit: maksimal 5 pendaftaran/jam per IP dan jeda 30 detik
+  antar pendaftaran.
 - **CSV disimpan ke folder dokumen aplikasi/temp**, lalu ditampilkan path-nya; berbagi
   file antar aplikasi belum diimplementasikan (hanya path + salin isi ke clipboard).
 - Uji render/browser di server build: lihat catatan di laporan proyek; pengujian APK nyata

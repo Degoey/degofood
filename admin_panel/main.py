@@ -1,4 +1,5 @@
 ﻿import os
+import secrets
 from datetime import datetime
 from pathlib import Path
 
@@ -54,9 +55,27 @@ def _api_delete(path: str):
     return httpx.delete(BACKEND_URL + path, headers=_api_headers(), timeout=10)
 
 
+def _api_patch(path: str, json=None):
+    return httpx.patch(BACKEND_URL + path, headers=_api_headers(), json=json, timeout=10)
+
+
 def _check_login(request: Request):
     if not request.session.get('admin_user'):
         return RedirectResponse(url='/login', status_code=303)
+
+
+def _csrf(request: Request):
+    token = request.session.get('csrf_token')
+    if not token:
+        token = secrets.token_urlsafe(32)
+        request.session['csrf_token'] = token
+    return token
+
+
+def _check_csrf(request: Request, token: str):
+    if not token or not secrets.compare_digest(token, request.session.get('csrf_token', '')):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail='CSRF token tidak valid')
 
 
 def format_rupiah(value):
@@ -227,3 +246,122 @@ def delete_menu(request: Request, menu_id: int):
     except Exception:
         pass
     return RedirectResponse(url='/restaurants', status_code=303)
+
+
+# --------------------------------------------------------------------------- #
+# Merchant: pendaftaran mandiri, akun, persetujuan
+# --------------------------------------------------------------------------- #
+@app.get('/merchants')
+def merchants_page(request: Request, status: str = 'pending', msg: str = '', err: str = ''):
+    redirect = _check_login(request)
+    if redirect:
+        return redirect
+
+    registrations, accounts, restaurants = [], [], []
+    try:
+        params = f'?status={status}' if status else ''
+        r = _api_get('/api/admin/merchant-registrations' + params)
+        if r.status_code == 200:
+            registrations = r.json()
+    except Exception:
+        pass
+    try:
+        r = _api_get('/api/admin/merchants')
+        if r.status_code == 200:
+            accounts = r.json()
+    except Exception:
+        pass
+    try:
+        r = _api_get('/api/admin/restaurants')
+        if r.status_code == 200:
+            restaurants = r.json()
+    except Exception:
+        pass
+
+    taken = {a.get('restaurant_id') for a in accounts}
+    return templates.TemplateResponse(
+        request,
+        'merchants.html',
+        {'active': 'merchants', 'registrations': registrations, 'accounts': accounts,
+         'restaurants': restaurants, 'taken': taken, 'status_filter': status,
+         'msg': msg, 'err': err, 'csrf_token': _csrf(request)},
+    )
+
+
+@app.post('/merchants/registrations/{registration_id}/approve')
+def approve_registration(request: Request, registration_id: int,
+                         csrf_token: str = Form(''),
+                         link_mode: str = Form('new'),
+                         restaurant_id: str = Form(''),
+                         store_name: str = Form(''),
+                         store_address: str = Form(''),
+                         store_phone: str = Form('')):
+    redirect = _check_login(request)
+    if redirect:
+        return redirect
+    _check_csrf(request, csrf_token)
+    payload = {}
+    if link_mode == 'existing' and restaurant_id.strip():
+        payload['restaurant_id'] = int(restaurant_id)
+    else:
+        payload['new_restaurant'] = {
+            'name': store_name.strip() or 'Toko Baru',
+            'address': store_address.strip() or '-',
+            'phone': store_phone.strip() or '-',
+        }
+    try:
+        r = _api_post(f'/api/admin/merchant-registrations/{registration_id}/approve', json=payload)
+        if r.status_code != 200:
+            detail = ''
+            try:
+                detail = str(r.json().get('detail'))
+            except Exception:
+                detail = r.text[:200]
+            return RedirectResponse(url=f'/merchants?err={detail}', status_code=303)
+    except Exception as ex:
+        return RedirectResponse(url=f'/merchants?err={ex}', status_code=303)
+    return RedirectResponse(url='/merchants?msg=Pendaftaran+disetujui+dan+akun+dibuat', status_code=303)
+
+
+@app.post('/merchants/registrations/{registration_id}/reject')
+def reject_registration(request: Request, registration_id: int, csrf_token: str = Form(''), note: str = Form('')):
+    redirect = _check_login(request)
+    if redirect:
+        return redirect
+    _check_csrf(request, csrf_token)
+    try:
+        r = _api_post(f'/api/admin/merchant-registrations/{registration_id}/reject',
+                      json={'note': note.strip() or None})
+        if r.status_code != 200:
+            return RedirectResponse(url=f'/merchants?err={r.text[:200]}', status_code=303)
+    except Exception as ex:
+        return RedirectResponse(url=f'/merchants?err={ex}', status_code=303)
+    return RedirectResponse(url='/merchants?msg=Pendaftaran+ditolak', status_code=303)
+
+
+@app.post('/merchants/{account_id}/active')
+def set_merchant_active(request: Request, account_id: int, csrf_token: str = Form(''), is_active: str = Form('1')):
+    redirect = _check_login(request)
+    if redirect:
+        return redirect
+    _check_csrf(request, csrf_token)
+    try:
+        _api_patch(f'/api/admin/merchants/{account_id}/active?is_active={is_active == "1"}')
+    except Exception:
+        pass
+    return RedirectResponse(url='/merchants?msg=Status+akun+diubah', status_code=303)
+
+
+@app.post('/merchants/{account_id}/password')
+def reset_merchant_password(request: Request, account_id: int, csrf_token: str = Form(''), password: str = Form(...)):
+    redirect = _check_login(request)
+    if redirect:
+        return redirect
+    _check_csrf(request, csrf_token)
+    try:
+        r = _api_post(f'/api/admin/merchants/{account_id}/password', json={'password': password})
+        if r.status_code != 200:
+            return RedirectResponse(url=f'/merchants?err={r.text[:200]}', status_code=303)
+    except Exception as ex:
+        return RedirectResponse(url=f'/merchants?err={ex}', status_code=303)
+    return RedirectResponse(url='/merchants?msg=Password+direset+dan+token+lama+dicabut', status_code=303)

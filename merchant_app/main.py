@@ -563,6 +563,133 @@ class MerchantApp:
             self.snack(f'Gagal memulai: {ex}')
             self.show_login()
 
+    # ---------------- pendaftaran mandiri ----------------
+    def show_register(self):
+        self.set_view(self.register_view(), show_nav=False)
+
+    def register_view(self):
+        """Layar pendaftaran: merchant mengisi sendiri HP/email + password pilihannya."""
+        self.reg_name = field('Nama pemilik / penanggung jawab', prefix_icon=ft.Icons.PERSON_OUTLINE_ROUNDED)
+        self.reg_phone = field('Nomor HP (08xx / +62xx)', prefix_icon=ft.Icons.PHONE_ROUNDED,
+                               keyboard_type=ft.KeyboardType.PHONE)
+        self.reg_email = field('Email (opsional kalau sudah isi nomor HP)',
+                               prefix_icon=ft.Icons.MAIL_OUTLINE_ROUNDED)
+        self.reg_store = field('Nama toko / warung', prefix_icon=ft.Icons.STOREFRONT_ROUNDED)
+        self.reg_address = field('Alamat toko', prefix_icon=ft.Icons.PLACE_OUTLINED, multiline=True,
+                                 min_lines=2, max_lines=3)
+        self.reg_pwd = field('Password (min 8 karakter, ada huruf & angka)', password=True,
+                             can_reveal_password=True, prefix_icon=ft.Icons.LOCK_OUTLINE_ROUNDED)
+        self.reg_pwd2 = field('Ulangi password', password=True, can_reveal_password=True,
+                              prefix_icon=ft.Icons.LOCK_OUTLINE_ROUNDED)
+        self.reg_err = txt('', size=12, color=RED)
+        self.reg_err.visible = False
+        self.reg_ok = txt('', size=12, color=EMER)
+        self.reg_ok.visible = False
+        self.reg_btn = gold_button('Kirim pendaftaran', self.safe(self.register_click),
+                                   icon=ft.Icons.SEND_ROUNDED, expand=True)
+
+        form = card(ft.Column([
+            section('Daftar jadi merchant'),
+            txt('Isi data toko Anda. Nomor HP atau email minimal salah satu. '
+                'Setelah dikirim, akun BELUM aktif: admin DEGOFOOD memverifikasi dulu '
+                'dan menautkan restoran Anda sebelum bisa masuk.', size=11, color=DIM),
+            self.reg_name,
+            self.reg_phone,
+            self.reg_email,
+            self.reg_store,
+            self.reg_address,
+            self.reg_pwd,
+            self.reg_pwd2,
+            self.reg_err,
+            self.reg_ok,
+            self.reg_btn,
+            ft.TextButton(content=txt('Sudah punya akun? Masuk', size=12, color=GOLD),
+                          on_click=self.safe(lambda e: self.show_login())),
+        ], spacing=12, horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
+
+        header = ft.Container(
+            content=ft.Column([
+                ft.Container(width=64, height=64, border_radius=32, bgcolor=GOLD_SOFT,
+                             alignment=ft.alignment.center, border=ft.border.all(1, GOLD),
+                             content=ft.Icon(ft.Icons.PERSON_ADD_ALT_ROUNDED, color=GOLD, size=30)),
+                txt('Pendaftaran Merchant', size=18, weight=ft.FontWeight.BOLD),
+                txt('DEGOFOOD', size=12, color=DIM, spacing=3),
+            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=6),
+            padding=ft.padding.only(top=40, bottom=18))
+
+        return ft.Container(
+            expand=True,
+            gradient=ft.LinearGradient(begin=ft.alignment.top_left, end=ft.alignment.bottom_right,
+                                       colors=['#0B1524', '#070B14']),
+            content=ft.Column([
+                header,
+                ft.Container(content=form, padding=ft.padding.symmetric(horizontal=20)),
+                ft.Container(height=18),
+                ft.TextButton(content=txt('Alamat server: ' + self.api.base, size=11, color=DIM),
+                              on_click=self.safe(lambda e: self.show_server_page(back_to_login=True))),
+            ], expand=True, scroll=ft.ScrollMode.AUTO,
+                horizontal_alignment=ft.CrossAxisAlignment.STRETCH, spacing=0))
+
+    def register_click(self, e):
+        nama = (self.reg_name.value or '').strip()
+        phone = (self.reg_phone.value or '').strip()
+        email = (self.reg_email.value or '').strip()
+        toko = (self.reg_store.value or '').strip()
+        alamat = (self.reg_address.value or '').strip()
+        pwd = self.reg_pwd.value or ''
+        pwd2 = self.reg_pwd2.value or ''
+
+        def gagal(pesan):
+            self.reg_err.value = pesan
+            self.reg_err.visible = True
+            self.page.update()
+
+        if len(nama) < 2:
+            return gagal('Nama pemilik wajib diisi (minimal 2 karakter).')
+        if not phone and not email:
+            return gagal('Isi nomor HP atau email (minimal salah satu).')
+        if len(pwd) < 8:
+            return gagal('Password minimal 8 karakter.')
+        if pwd != pwd2:
+            return gagal('Password dan ulangi password tidak sama.')
+
+        self.reg_err.visible = False
+        self.reg_ok.visible = False
+        self.reg_btn.disabled = True
+        self.reg_btn.content = ft.Row([
+            ft.ProgressRing(width=16, height=16, stroke_width=2, color='#0B1524'),
+            txt('Mengirim...', size=14, color='#0B1524', weight=ft.FontWeight.W_600),
+        ], alignment=ft.MainAxisAlignment.CENTER, spacing=8, tight=True)
+        self.page.update()
+        try:
+            body = {'name': nama, 'password': pwd}
+            if phone:
+                body['phone'] = phone
+            if email:
+                body['email'] = email
+            if toko:
+                body['store_name'] = toko
+            if alamat:
+                body['address'] = alamat
+            data = self.api.post_json('/api/merchant/auth/register', body) or {}
+            self.reg_ok.value = (data.get('message')
+                                 or 'Pendaftaran diterima. Tunggu verifikasi admin DEGOFOOD.')
+            self.reg_ok.visible = True
+            for f in (self.reg_pwd, self.reg_pwd2):
+                f.value = ''
+            self.page.update()
+        except ApiError as ex:
+            self.reg_err.value = str(ex)
+            self.reg_err.visible = True
+        finally:
+            self.reg_btn.disabled = False
+            self.reg_btn.content = None
+            self.reg_btn.text = 'Kirim pendaftaran'
+            try:
+                self.page.update()
+            except Exception:
+                pass
+
     def enter_app(self):
         self.restaurant = (self.account or {}).get('restaurant') or {}
         self.show_home()
@@ -597,8 +724,10 @@ class MerchantApp:
             self.login_pwd,
             self.login_err,
             self.login_btn,
-            txt('Akun merchant dibuat oleh admin DEGOFOOD. Hubungi admin bila belum punya akun.',
+            txt('Belum punya akun? Daftar sendiri dari aplikasi ini, lalu tunggu verifikasi admin.',
                 size=11, color=DIM),
+            ft.TextButton(content=txt('Daftar jadi merchant', size=12, color=GOLD),
+                          on_click=self.safe(lambda e: self.show_register())),
         ], spacing=12, horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
 
         footer = ft.Column([
