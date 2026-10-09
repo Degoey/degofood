@@ -1,0 +1,35 @@
+# DEGOFOOD — deploy stack
+#
+# Kedua service hanya bind ke 127.0.0.1 (tidak terekspos langsung ke internet).
+# Akses publik lewat reverse proxy di depan (lihat catatan domain di DEPLOY-NOTES.md).
+#
+# Jalankan:  docker compose up -d --build
+# Log:       docker compose logs -f backend
+
+services:
+  backend:
+    build: ./backend
+    container_name: degofood-backend
+    restart: unless-stopped
+    env_file: ./backend/.env
+    volumes:
+      - ./data:/data
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5).status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  admin:
+    build: ./admin_panel
+    container_name: degofood-admin
+    restart: unless-stopped
+    env_file: ./admin_panel/.env
+    depends_on:
+      backend:
+        condition: service_started
+    ports:
+      - "127.0.0.1:8001:8001"
